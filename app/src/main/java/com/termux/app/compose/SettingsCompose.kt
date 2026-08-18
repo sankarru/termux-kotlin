@@ -2,8 +2,12 @@ package com.termux.app.compose
 
 import android.app.Activity
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -11,9 +15,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialShapes
-import androidx.compose.material3.toShape
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
@@ -21,7 +22,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +35,8 @@ import com.termux.app.models.UserAction
 import com.termux.shared.android.AndroidUtils
 import com.termux.shared.termux.TermuxConstants
 import com.termux.shared.termux.TermuxUtils
+import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties
+import com.termux.shared.termux.settings.properties.TermuxPropertyConstants
 import com.termux.shared.termux.settings.preferences.TermuxAPIAppSharedPreferences
 import com.termux.shared.termux.settings.preferences.TermuxFloatAppSharedPreferences
 import com.termux.shared.termux.settings.preferences.TermuxTaskerAppSharedPreferences
@@ -49,7 +51,7 @@ enum class SettingsScreen {
     MAIN, TERMUX, DEBUGGING, TERMINAL_IO, TERMINAL_VIEW, UI_CUSTOMIZATION, ABOUT
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TermuxSettingsScreen(activity: Activity) {
     val context = LocalContext.current
@@ -153,8 +155,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                     title = "Termux",
                                     summary = "Appearance, behavior, terminal setup",
                                     icon = Icons.Rounded.Terminal,
-                                    shape = RoundedCornerShape(24.dp),
-                                    iconShape = MaterialShapes.Cookie12Sided.toShape(),
                                     onClick = { currentScreen = SettingsScreen.TERMUX }
                                 )
                             }
@@ -175,8 +175,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                             title = "Termux:API",
                                             summary = "API access configuration",
                                             icon = Icons.Rounded.Extension,
-                                            shape = RoundedCornerShape(12.dp),
-                                            iconShape = MaterialShapes.Cookie9Sided.toShape(),
                                             onClick = { /* TODO */ }
                                         )
                                     }
@@ -187,8 +185,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                             title = "Termux:Float",
                                             summary = "Floating window configuration",
                                             icon = Icons.Rounded.PictureInPicture,
-                                            shape = RoundedCornerShape(12.dp),
-                                            iconShape = MaterialShapes.Slanted.toShape(),
                                             onClick = { /* TODO */ }
                                         )
                                     }
@@ -199,8 +195,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                             title = "Termux:Tasker",
                                             summary = "Tasker integration",
                                             icon = Icons.Rounded.Task,
-                                            shape = RoundedCornerShape(12.dp),
-                                            iconShape = MaterialShapes.Pentagon.toShape(),
                                             onClick = { /* TODO */ }
                                         )
                                     }
@@ -211,8 +205,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                             title = "Termux:Widget",
                                             summary = "Widget configuration",
                                             icon = Icons.Rounded.Widgets,
-                                            shape = RoundedCornerShape(12.dp),
-                                            iconShape = MaterialShapes.Cookie4Sided.toShape(),
                                             onClick = { /* TODO */ }
                                         )
                                     }
@@ -230,8 +222,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                     title = "About Termux",
                                     summary = "App info and device details",
                                     icon = Icons.Rounded.Info,
-                                    shape = if (showDonate) RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 8.dp, bottomEnd = 8.dp) else RoundedCornerShape(24.dp),
-                                    iconShape = MaterialShapes.Sunny.toShape(),
                                     onClick = { currentScreen = SettingsScreen.ABOUT }
                                 )
                             }
@@ -242,8 +232,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                         title = "Donate",
                                         summary = "Support the development",
                                         icon = Icons.Rounded.Favorite,
-                                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 24.dp, bottomEnd = 24.dp),
-                                        iconShape = MaterialShapes.Clover4Leaf.toShape(),
                                         onClick = { ShareUtils.openUrl(context, TermuxConstants.TERMUX_DONATE_URL) }
                                     )
                                 }
@@ -263,8 +251,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                     title = "Debugging",
                                     summary = "Logging, key logging, and notifications",
                                     icon = Icons.Rounded.BugReport,
-                                    shape = RoundedCornerShape(24.dp),
-                                    iconShape = MaterialShapes.Boom.toShape(),
                                     onClick = { currentScreen = SettingsScreen.DEBUGGING }
                                 )
                             }
@@ -273,8 +259,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                     title = "Terminal IO",
                                     summary = "Soft keyboard behavior and input",
                                     icon = Icons.Rounded.Keyboard,
-                                    shape = RoundedCornerShape(24.dp),
-                                    iconShape = MaterialShapes.Slanted.toShape(),
                                     onClick = { currentScreen = SettingsScreen.TERMINAL_IO }
                                 )
                             }
@@ -283,8 +267,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                     title = "Terminal View",
                                     summary = "Colors, margins, scaling",
                                     icon = Icons.Rounded.Visibility,
-                                    shape = RoundedCornerShape(24.dp),
-                                    iconShape = MaterialShapes.Oval.toShape(),
                                     onClick = { currentScreen = SettingsScreen.TERMINAL_VIEW }
                                 )
                             }
@@ -293,8 +275,6 @@ fun TermuxSettingsScreen(activity: Activity) {
                                     title = "UI Customization",
                                     summary = "Colors, fonts, styling",
                                     icon = Icons.Rounded.Palette,
-                                    shape = RoundedCornerShape(24.dp),
-                                    iconShape = MaterialShapes.Clover4Leaf.toShape(),
                                     onClick = { currentScreen = SettingsScreen.UI_CUSTOMIZATION }
                                 )
                             }
@@ -321,31 +301,26 @@ fun TermuxSettingsScreen(activity: Activity) {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsActionItem(
     title: String,
     summary: String,
     icon: ImageVector,
-    shape: RoundedCornerShape,
-    iconShape: Shape = RoundedCornerShape(16.dp),
     onClick: () -> Unit
 ) {
     Surface(
-        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                shape = iconShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                modifier = Modifier.size(52.dp)
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.size(44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
@@ -419,11 +394,8 @@ fun SettingsGroup(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -442,7 +414,7 @@ fun SettingSwitchTile(
     summaryOn: String,
     summaryOff: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: ((Boolean) -> Unit)?
 ) {
     ListItem(
         headlineContent = {
@@ -470,7 +442,7 @@ fun SettingSwitchTile(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .let { if (onCheckedChange == null) it else it.clickable { onCheckedChange(!checked) } }
             .padding(vertical = 4.dp)
     )
 }
@@ -672,8 +644,47 @@ fun TerminalIOSettingsScreen(context: Context) {
 @Composable
 fun TerminalViewSettingsScreen(context: Context) {
     val preferences = remember { TermuxAppSharedPreferences.build(context, true) } ?: return
-    
+
     var marginAdjustment by remember { mutableStateOf(preferences.isTerminalMarginAdjustmentEnabled()) }
+    var wallpaperApplied by remember { mutableStateOf(false) }
+
+    val wallpaperPath = TermuxConstants.TERMUX_DATA_HOME_DIR_PATH + "/background-image"
+    val wallpaperDisplayPath = "~/.termux/background-image"
+
+    val wallpaperPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val result = context.contentResolver.openInputStream(uri)
+        if (result == null) {
+            Toast.makeText(context, "Unable to read the selected image", Toast.LENGTH_LONG).show()
+            return@rememberLauncherForActivityResult
+        }
+        try {
+            result.use { input ->
+                val outFile = java.io.File(wallpaperPath)
+                outFile.parentFile?.mkdirs()
+                outFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            val properties = TermuxAppSharedProperties.getProperties()
+            if (properties == null) {
+                Toast.makeText(context, "Properties not initialised", Toast.LENGTH_LONG).show()
+                return@rememberLauncherForActivityResult
+            }
+            if (properties.updatePropertyValueInPrimaryFile(
+                    TermuxPropertyConstants.KEY_TERMINAL_BACKGROUND_IMAGE, wallpaperDisplayPath
+                )
+            ) {
+                wallpaperApplied = true
+                Toast.makeText(context, "Wallpaper set", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Failed to save wallpaper setting", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Logger.logStackTraceWithMessage("Settings", "Failed to set wallpaper", e)
+            Toast.makeText(context, "Failed to set wallpaper: " + e.message, Toast.LENGTH_LONG).show()
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -695,10 +706,34 @@ fun TerminalViewSettingsScreen(context: Context) {
                 )
             }
         }
+
+        item {
+            SettingsGroup(title = "Wallpaper") {
+                SettingListTile(
+                    title = "Set Wallpaper",
+                    selectedValueLabel = if (wallpaperApplied) "Wallpaper set to " + wallpaperDisplayPath else
+                        "Choose an image to show behind the terminal",
+                    onClick = { wallpaperPickerLauncher.launch(arrayOf("image/*")) }
+                )
+                SettingListTile(
+                    title = "Clear Wallpaper",
+                    selectedValueLabel = "Remove the terminal background image",
+                    onClick = {
+                        val properties = TermuxAppSharedProperties.getProperties()
+                        if (properties != null && properties.updatePropertyValueInPrimaryFile(
+                                TermuxPropertyConstants.KEY_TERMINAL_BACKGROUND_IMAGE, null
+                            )
+                        ) {
+                            wallpaperApplied = false
+                            Toast.makeText(context, "Wallpaper cleared", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+        }
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AboutSettingsScreen(context: Context) {
     val appInfo = remember {
@@ -738,7 +773,7 @@ fun AboutSettingsScreen(context: Context) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(
-                    shape = MaterialShapes.Cookie12Sided.toShape(),
+                    shape = RoundedCornerShape(0.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(80.dp)
                 ) {
@@ -829,17 +864,6 @@ fun AboutSettingsScreen(context: Context) {
 @Composable
 fun UICustomizationSettingsScreen(context: Context) {
     val prefs = remember { TermuxAppSharedPreferences.build(context, true)?.sharedPreferences } ?: return
-    
-    var colorMode by remember { mutableStateOf(prefs.getString("ui_color_scheme_mode", "monet") ?: "monet") }
-    var fontChoice by remember { mutableStateOf(prefs.getString("ui_font_choice", "google_sans_code") ?: "google_sans_code") }
-    
-    var showFontDialog by remember { mutableStateOf(false) }
-
-    val fontLabels = mapOf(
-        "google_sans_code" to "Google Sans Code (Default)",
-        "system" to "System Font",
-        "termux_font" to "Termux Font"
-    )
 
     LazyColumn(
         modifier = Modifier
@@ -848,79 +872,20 @@ fun UICustomizationSettingsScreen(context: Context) {
         contentPadding = PaddingValues(bottom = 32.dp)
     ) {
         item {
-            SettingsGroup(title = "Colors") {
+            SettingsGroup(title = "Style") {
                 SettingSwitchTile(
-                    title = "Use Termux Colors",
-                    summaryOn = "Currently using colors from your Termux theme (.termux/colors.properties)",
-                    summaryOff = "Currently using system Material You (Monet) dynamic colors",
-                    checked = colorMode == "termux",
-                    onCheckedChange = { useTermux ->
-                        val newMode = if (useTermux) "termux" else "monet"
-                        prefs.edit().putString("ui_color_scheme_mode", newMode).apply()
-                        colorMode = newMode
-                    }
+                    title = "Use Termux (j-code) Colors",
+                    summaryOn = "All UI parts use colors from your Termux theme (.termux/colors.properties), matching the terminal.",
+                    summaryOff = "All UI parts use colors from your Termux theme (.termux/colors.properties), matching the terminal.",
+                    checked = true,
+                    onCheckedChange = null
                 )
-            }
-        }
-
-        item {
-            SettingsGroup(title = "Typography") {
                 SettingListTile(
-                    title = "UI Font Family",
-                    selectedValueLabel = fontLabels[fontChoice] ?: "Google Sans Code",
-                    onClick = { showFontDialog = true }
+                    title = "UI Font",
+                    selectedValueLabel = "Terminal monospace (matches the terminal)",
+                    onClick = {}
                 )
             }
         }
-    }
-
-    if (showFontDialog) {
-        AlertDialog(
-            onDismissRequest = { showFontDialog = false },
-            title = {
-                Text(
-                    text = "UI Font Family",
-                    style = MaterialTheme.typography.titleLarge
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    fontLabels.forEach { (value, label) ->
-                        val isSelected = fontChoice == value
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    prefs.edit().putString("ui_font_choice", value).apply()
-                                    fontChoice = value
-                                    showFontDialog = false
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    prefs.edit().putString("ui_font_choice", value).apply()
-                                    fontChoice = value
-                                    showFontDialog = false
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showFontDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }

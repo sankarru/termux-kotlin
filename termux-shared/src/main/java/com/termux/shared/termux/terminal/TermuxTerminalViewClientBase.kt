@@ -46,6 +46,18 @@ open class TermuxTerminalViewClientBase : TerminalViewClient {
         return false
     }
 
+    override fun onDrawerSwipe() {
+    }
+
+    override fun onScriptBarSwipe() {
+    }
+
+    override fun onContextMenu(x: Float, y: Float) {
+    }
+
+    override fun onQuickCommandsRequest() {
+    }
+
     override fun readControlKey(): Boolean {
         return false
     }

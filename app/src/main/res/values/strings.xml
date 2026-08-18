@@ -57,7 +57,7 @@
     <string name="msg_enabling_terminal_toolbar">Enabling Terminal Toolbar</string>
     <string name="msg_disabling_terminal_toolbar">Disabling Terminal Toolbar</string>
 
-
+    <string name="msg_script_saved">Saved script %1$s</string>
 
     <!-- Terminal Popup -->
     <string name="action_select_url">Select URL</string>

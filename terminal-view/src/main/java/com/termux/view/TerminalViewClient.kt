@@ -39,6 +39,20 @@ interface TerminalViewClient {
 
     fun onLongPress(event: MotionEvent?): Boolean
 
+    /** Called on a rightward swipe across the terminal; the client opens the session drawer. */
+    fun onDrawerSwipe()
+
+    /** Called on a leftward swipe across the terminal; the client opens the script bar. */
+    fun onScriptBarSwipe()
+
+    /** Called on a long press at the given view coordinates; the client shows the j-code-style
+     * selection menu (Copy/Paste/Select all/Clear/Select text) with icons at the touch point.
+     */
+    fun onContextMenu(x: Float, y: Float)
+
+    /** Called on a double tap across the terminal; the client shows the quick-commands floating panel. */
+    fun onQuickCommandsRequest()
+
     fun readControlKey(): Boolean
 
     fun readAltKey(): Boolean

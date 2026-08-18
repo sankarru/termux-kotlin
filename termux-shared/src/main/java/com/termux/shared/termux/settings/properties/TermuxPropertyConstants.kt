@@ -134,6 +134,12 @@ object TermuxPropertyConstants {
     /** Defines the key for whether to use fullscreen workaround */
     const val KEY_USE_FULLSCREEN_WORKAROUND = "use-fullscreen-workaround" // Default: "use-fullscreen-workaround"
 
+    /**
+     * Defines the key for the terminal background wallpaper image path (a `~` or `$PREFIX` path).
+     * Empty/absent = solid terminal background color only.
+     */
+    const val KEY_TERMINAL_BACKGROUND_IMAGE = "background-image" // Default: "background-image"
+
     /* int */
 
     /** Defines the key for the bell behaviour */
@@ -374,7 +380,8 @@ object TermuxPropertyConstants {
         KEY_EXTRA_KEYS_STYLE,
         KEY_NIGHT_MODE,
         KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR,
-        KEY_VOLUME_KEYS_BEHAVIOUR
+        KEY_VOLUME_KEYS_BEHAVIOUR,
+        KEY_TERMINAL_BACKGROUND_IMAGE
     ))
 
     /** Defines the set for keys loaded by termux that have default boolean behaviour with false as default.

@@ -1,7 +1,13 @@
 package com.termux.app
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.os.Bundle
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.termux.BuildConfig
 import com.termux.shared.errors.Error
 import com.termux.shared.logger.Logger
@@ -36,6 +42,23 @@ class TermuxApplication : Application() {
 
         // Init app wide SharedProperties loaded from termux.properties
         val properties = TermuxAppSharedProperties.init(context)
+
+        // Apply fullscreen to every activity (settings, help, terminal, ...) so the `fullscreen`
+        // termux.properties option takes effect throughout the whole app, not just the terminal.
+        registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                applyFullScreen(activity)
+            }
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityResumed(activity: Activity) {
+                // Re-apply so bars hidden by enableEdgeToEdge()/system UI don't reappear
+                applyFullScreen(activity)
+            }
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
 
         // Init app wide shell manager
         val shellManager = TermuxShellManager.init(context)
@@ -80,6 +103,38 @@ class TermuxApplication : Application() {
             // Load the log level from shared preferences and set it to the {@link Logger.CURRENT_LOG_LEVEL}
             val preferences = TermuxAppSharedPreferences.build(context) ?: return
             Logger.setLogLevel(null, preferences.getLogLevel())
+        }
+
+        /**
+         * Hide the status bar and navigation bar on the given activity if the `fullscreen`
+         * termux.properties option is enabled.
+         */
+        @JvmStatic
+        fun applyFullScreen(activity: Activity) {
+            try {
+                val properties = TermuxAppSharedProperties.getProperties()
+                if (properties == null || !properties.isUsingFullScreen()) return
+                val window = activity.window
+                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
+                window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                // Opt into the display cutout area (e.g. camera hole) so the window is not
+                // letterboxed below it.
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    window.attributes.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+                // Draw content edge-to-edge so it extends behind the (hidden) system bars.
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    val controller = WindowInsetsControllerCompat(window, window.decorView)
+                    controller.hide(WindowInsetsCompat.Type.systemBars())
+                    controller.systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            } catch (e: Exception) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to apply fullscreen", e)
+            }
         }
     }
 }

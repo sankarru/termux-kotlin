@@ -35,16 +35,13 @@ fun ContextMenuOverlay(
     if (!stateHolder.isVisible) return
 
     Dialog(onDismissRequest = { stateHolder.isVisible = false }) {
-        Card(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 24.dp)
                 .wrapContentHeight(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(0.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -208,12 +205,10 @@ fun ContextMenuOverlay(
 fun ActionGroupCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(0.dp)
     ) {
         Column(
             modifier = Modifier

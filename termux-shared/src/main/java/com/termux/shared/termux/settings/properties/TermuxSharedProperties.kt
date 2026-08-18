@@ -49,6 +49,88 @@ abstract class TermuxSharedProperties(
     }
 
     /**
+     * Set the [String] value for a key in the primary [mPropertiesFile] file and reload the
+     * in-memory cache from disk.
+     *
+     * If the key already exists in the file, then only its value is replaced and any comments are
+     * preserved. Otherwise a new `key=value` line is appended to the end of the file. A `null`
+     * or empty value removes the key from the file.
+     *
+     * @param key The key to set.
+     * @param value The [String] value to set. If `null` or empty, then the key is removed.
+     * @return Returns `true` if the properties file was successfully updated, otherwise `false`.
+     */
+    @Synchronized
+    open fun updatePropertyValueInPrimaryFile(key: String, value: String?): Boolean {
+        val propertiesFile = mPropertiesFile ?: File(TermuxConstants.TERMUX_PROPERTIES_PRIMARY_FILE_PATH)
+        if (key.isBlank()) return false
+
+        val newLines = mutableListOf<String>()
+        var keyReplaced = false
+
+        val lines = if (propertiesFile.exists()) {
+            propertiesFile.readLines()
+        } else {
+            emptyList()
+        }
+
+        for (line in lines) {
+            val trimmed = line.trimStart()
+            if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("!")) {
+                newLines.add(line)
+                continue
+            }
+            val separatorIndex = indexOfKeyValueSeparator(trimmed)
+            if (separatorIndex < 0) {
+                newLines.add(line)
+                continue
+            }
+            val lineKey = trimmed.substring(0, separatorIndex).trim()
+            if (lineKey == key) {
+                keyReplaced = true
+                if (!value.isNullOrEmpty()) {
+                    newLines.add("$key=$value")
+                }
+            } else {
+                newLines.add(line)
+            }
+        }
+
+        if (!keyReplaced && !value.isNullOrEmpty()) {
+            newLines.add("$key=$value")
+        }
+
+        return try {
+            propertiesFile.parentFile?.mkdirs()
+            propertiesFile.writeText(newLines.joinToString("\n").trimEnd() + "\n")
+            loadTermuxPropertiesFromDisk()
+            true
+        } catch (e: Exception) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to update properties file \"" + propertiesFile.absolutePath + "\"", e)
+            false
+        }
+    }
+
+    /**
+     * Get the index of the first key/value separator (`=` or `:`) in a properties file line,
+     * taking escaped `\=` and `\:` into account.
+     */
+    private fun indexOfKeyValueSeparator(line: String): Int {
+        var escaped = false
+        for (i in line.indices) {
+            val c = line[i]
+            if (escaped) {
+                escaped = false
+            } else if (c == '\\') {
+                escaped = true
+            } else if (c == '=' || c == ':') {
+                return i
+            }
+        }
+        return -1
+    }
+
+    /**
      * Get the [Properties] from the [mPropertiesFile] file.
      *
      * @param cached If `true`, then the [Properties] in-memory cache is returned.
@@ -251,6 +333,13 @@ abstract class TermuxSharedProperties(
     open fun isUsingFullScreenWorkAround(): Boolean {
         return getInternalPropertyValue(TermuxPropertyConstants.KEY_USE_FULLSCREEN_WORKAROUND, true) as? Boolean ?: false
     }
+
+    /** The terminal background wallpaper image path (empty when none is set). */
+    open val terminalBackgroundImage: String?
+        get() {
+            val value = getInternalPropertyValue(TermuxPropertyConstants.KEY_TERMINAL_BACKGROUND_IMAGE, true) as? String
+            return value?.takeIf { it.isNotBlank() }
+        }
 
     open val bellBehaviour: Int
         get() = getInternalPropertyValue(TermuxPropertyConstants.KEY_BELL_BEHAVIOUR, true) as? Int ?: TermuxPropertyConstants.DEFAULT_IVALUE_BELL_BEHAVIOUR

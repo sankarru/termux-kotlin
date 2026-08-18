@@ -149,7 +149,11 @@ class TermuxTerminalSessionActivityClient(private val mActivity: TermuxActivity)
         } else {
             // Once we have a separate launcher icon for the failsafe session, it
             // should be safe to auto-close session on exit code '0' or '130'.
-            if (finishedSession.exitStatus == 0 || finishedSession.exitStatus == 130 || isPluginExecutionCommandWithPendingResult) {
+            // A session killed by a signal (negative exit code, e.g. the side-panel kill which
+            // SIGKILLs the shell) is also removed so it does not hang on a "[Process completed]"
+            // screen; when it was the last one the app closes.
+            if (finishedSession.exitStatus == 0 || finishedSession.exitStatus == 130 ||
+                finishedSession.exitStatus < 0 || isPluginExecutionCommandWithPendingResult) {
                 removeFinishedSession(finishedSession)
             }
         }

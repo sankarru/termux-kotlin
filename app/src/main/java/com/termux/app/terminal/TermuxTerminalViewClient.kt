@@ -315,6 +315,23 @@ open class TermuxTerminalViewClient(
         return false
     }
 
+    override fun onDrawerSwipe() {
+        mActivity.openDrawer()
+    }
+
+    override fun onScriptBarSwipe() {
+        // Left-swipe just opens the script bar; it must not auto-create a script from the terminal.
+        mActivity.openScriptBar()
+    }
+
+    override fun onContextMenu(x: Float, y: Float) {
+        mActivity.showTerminalSelectionMenu(x, y)
+    }
+
+    override fun onQuickCommandsRequest() {
+        mActivity.openQuickCommandsPanel()
+    }
+
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean {
         if (session == null) return false
         if (mVirtualFnKeyDown) {
@@ -459,7 +476,6 @@ open class TermuxTerminalViewClient(
      * drawer or extra keys, or with ctrl+alt+k hardware keyboard shortcut.
      */
     fun onToggleSoftKeyboardRequest() {
-        // If soft keyboard toggle behaviour is enable/disabled
         if (mActivity.getProperties().shouldEnableDisableSoftKeyboardOnToggle()) {
             // If soft keyboard is visible
             if (!KeyboardUtils.areDisableSoftKeyboardFlagsSet(mActivity)) {
@@ -493,6 +509,27 @@ open class TermuxTerminalViewClient(
                 KeyboardUtils.toggleSoftKeyboard(mActivity)
             }
         }
+    }
+
+    /**
+     * Suppress the soft keyboard the next time the terminal view regains focus. Used when a Compose
+     * dialog (e.g. the quick-commands panel) closes: the dialog took window focus, so the terminal's
+     * focus listener would otherwise force-show the keyboard again after the dialog dismissed.
+     */
+    fun suppressNextSoftKeyboardShow() {
+        mShowSoftKeyboardIgnoreOnce = true
+    }
+
+    /**
+     * Explicitly show the soft keyboard for the terminal view. Unlike [onToggleSoftKeyboardRequest],
+     * this does not rely on the current IME state, so it reliably brings up the keyboard right after
+     * a Compose dialog (e.g. the quick-commands panel) has been torn down and the terminal has
+     * regained focus.
+     */
+    fun showSoftKeyboard() {
+        mActivity.getPreferences().setSoftKeyboardEnabled(true)
+        KeyboardUtils.clearDisableSoftKeyboardFlags(mActivity)
+        KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView())
     }
 
     fun setSoftKeyboardState(isStartup: Boolean, isReloadTermuxProperties: Boolean) {

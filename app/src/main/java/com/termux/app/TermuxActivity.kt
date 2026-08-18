@@ -30,6 +30,12 @@ import com.termux.app.activities.SettingsActivity
 import com.termux.app.api.file.FileReceiverActivity
 import com.termux.app.compose.ContextMenuStateHolder
 import com.termux.app.compose.MainScreenStateHolder
+import com.termux.app.compose.QuickCommandsStateHolder
+import com.termux.app.compose.LetterPanelStateHolder
+import com.termux.app.compose.TaskManagerStateHolder
+import com.termux.app.compose.TerminalSelectionMenuStateHolder
+import com.termux.app.compose.ScriptBarStateHolder
+import com.termux.app.compose.FileManagerStateHolder
 import com.termux.app.compose.setMainContent
 import com.termux.app.compose.ComposeExtraKeysView
 import com.termux.app.terminal.TermuxActivityRootView
@@ -205,7 +211,13 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
     fun getTermuxTerminalExtraKeys(): TermuxTerminalExtraKeys = termuxTerminalExtraKeys
 
     private lateinit var mContextMenuStateHolder: ContextMenuStateHolder
+    private lateinit var mTerminalSelectionMenuStateHolder: TerminalSelectionMenuStateHolder
     private lateinit var mMainScreenStateHolder: MainScreenStateHolder
+    private lateinit var mScriptBarStateHolder: ScriptBarStateHolder
+    private lateinit var mQuickCommandsStateHolder: QuickCommandsStateHolder
+    private lateinit var mLetterPanelStateHolder: LetterPanelStateHolder
+    private lateinit var mTaskManagerStateHolder: TaskManagerStateHolder
+    private lateinit var mFileManagerStateHolder: FileManagerStateHolder
 
     /**
      * The {@link TermuxActivity} broadcast receiver for various things like terminal style configuration changes.
@@ -255,7 +267,14 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
     var mDrawerGesturesEnabledSetter: ((Boolean) -> Unit)? = null
 
     @JvmField
-    var mCurrentToolbarPage = 0
+    var mScriptBarOpenRunnable: Runnable? = null
+    @JvmField
+    var mScriptBarCloseRunnable: Runnable? = null
+    @JvmField
+    var mScriptBarIsOpenCheck: java.util.concurrent.Callable<Boolean>? = null
+
+    @JvmField
+    var mCurrentToolbarPage = 1
     @JvmField
     var mToolbarTextInput = ""
 
@@ -294,7 +313,7 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         mTermuxActivityBottomSpaceView = View(this)
 
         if (properties.isUsingFullScreen()) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            TermuxApplication.applyFullScreen(this)
         }
 
         setTermuxTerminalViewAndClients()
@@ -303,6 +322,8 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
             override fun handleOnBackPressed() {
                 if (isDrawerOpen) {
                     closeDrawer()
+                } else if (isScriptBarOpen) {
+                    closeScriptBar()
                 } else {
                     finishActivityIfNotFinishing()
                 }
@@ -312,7 +333,13 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         setTerminalToolbarView(savedInstanceState)
 
         mContextMenuStateHolder = ContextMenuStateHolder()
+        mTerminalSelectionMenuStateHolder = TerminalSelectionMenuStateHolder()
         mMainScreenStateHolder = MainScreenStateHolder()
+        mScriptBarStateHolder = ScriptBarStateHolder()
+        mQuickCommandsStateHolder = QuickCommandsStateHolder()
+        mLetterPanelStateHolder = LetterPanelStateHolder()
+        mTaskManagerStateHolder = TaskManagerStateHolder()
+        mFileManagerStateHolder = FileManagerStateHolder()
 
         val composeView = findViewById<androidx.compose.ui.platform.ComposeView>(R.id.activity_termux_compose)
         if (composeView != null) {
@@ -326,20 +353,19 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
                 this,
                 savedTextInput,
                 mMainScreenStateHolder,
-                mContextMenuStateHolder
+                mContextMenuStateHolder,
+                mTerminalSelectionMenuStateHolder,
+                mScriptBarStateHolder,
+                mQuickCommandsStateHolder,
+                mLetterPanelStateHolder,
+                mTaskManagerStateHolder,
+                mFileManagerStateHolder
             )
         }
 
         mTerminalView?.setOnContextMenuShowListener(object : TerminalView.OnContextMenuShowListener {
             override fun onShowContextMenu(view: View): Boolean {
-                val currentSession = currentSession ?: return true
-
-                mContextMenuStateHolder.pid = currentSession.pid
-                mContextMenuStateHolder.isSessionRunning = currentSession.isRunning
-                mContextMenuStateHolder.selectedText = mTerminalView?.getStoredSelectedText() ?: ""
-                mContextMenuStateHolder.isAutoFillEnabled = mTerminalView?.isAutoFillEnabled() == true
-                mContextMenuStateHolder.isKeepScreenOn = mPreferences?.shouldKeepScreenOn() == true
-                mContextMenuStateHolder.isVisible = true
+                showTerminalActions()
                 return true
             }
         })
@@ -408,6 +434,9 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         mTermuxTerminalSessionActivityClient?.onResume()
 
         mTermuxTerminalViewClient?.onResume()
+
+        // Re-apply the wallpaper in case it was changed from the settings panel
+        applyTerminalBackgroundWallpaper()
 
         // Check if a crash happened on last run of the app or if a plugin crashed and show a
         // notification with the crash details if it did
@@ -562,8 +591,24 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
             setTerminalViewClient(termuxTerminalViewClient)
         }
 
+        // Apply the background wallpaper from termux.properties (`background-image`), expanding a
+        // `~`/`$PREFIX` path. The terminal view decodes and scales it to fill behind the cell grid.
+        applyTerminalBackgroundWallpaper()
+
         mTermuxTerminalViewClient?.onCreate()
         mTermuxTerminalSessionActivityClient?.onCreate()
+    }
+
+    /**
+     * Apply (or clear) the terminal background wallpaper from the `background-image`
+     * termux.properties option. The path is expanded (`~`/`$PREFIX`) and passed to the
+     * terminal view which decodes and scales it to fill behind the cell grid.
+     */
+    fun applyTerminalBackgroundWallpaper() {
+        val wallpaperPath = properties.terminalBackgroundImage?.let { raw ->
+            com.termux.shared.termux.file.TermuxFileUtils.getExpandedTermuxPath(raw)
+        }
+        mTerminalView?.setBackgroundWallpaper(wallpaperPath)
     }
 
     private fun setTermuxSessionsListView() {
@@ -795,6 +840,17 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
     }
 
     /**
+     * Show the j-code-style long-press selection menu (Copy/Paste/Select all/Clear/Select text) at
+     * the touch point. The coordinates are in the terminal view's own space; the Compose overlay is
+     * hosted inside the terminal's Box so they align.
+     */
+    fun showTerminalSelectionMenu(x: Float, y: Float) {
+        mTerminalSelectionMenuStateHolder.x = x
+        mTerminalSelectionMenuStateHolder.y = y
+        mTerminalSelectionMenuStateHolder.isVisible = true
+    }
+
+    /**
      * For processes to access primary external storage (/sdcard, /storage/emulated/0, ~/storage/shared),
      * termux needs to be granted legacy WRITE_EXTERNAL_STORAGE or MANAGE_EXTERNAL_STORAGE permissions
      * if targeting targetSdkVersion 30 (android 11) and running on sdk 30 (android 11) and higher.
@@ -878,6 +934,42 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         mDrawerCloseRunnable?.run()
     }
 
+    fun openScriptBar() {
+        mScriptBarOpenRunnable?.run()
+    }
+
+    fun openQuickCommandsPanel() {
+        mQuickCommandsStateHolder.isVisible = true
+    }
+
+    /** Close the quick-commands panel without the terminal re-popping the soft keyboard. */
+    fun closeQuickCommandsPanel() {
+        mQuickCommandsStateHolder.isVisible = false
+        mTermuxTerminalViewClient?.suppressNextSoftKeyboardShow()
+    }
+
+    /** Show the "Terminal Actions" panel (Select URL / Share / Reset / Kill / Style / ...). */
+    fun showTerminalActions() {
+        val currentSession = currentSession ?: return
+
+        mContextMenuStateHolder.pid = currentSession.pid
+        mContextMenuStateHolder.isSessionRunning = currentSession.isRunning
+        mContextMenuStateHolder.selectedText = mTerminalView?.getStoredSelectedText() ?: ""
+        mContextMenuStateHolder.isAutoFillEnabled = mTerminalView?.isAutoFillEnabled() == true
+        mContextMenuStateHolder.isKeepScreenOn = mPreferences?.shouldKeepScreenOn() == true
+        mContextMenuStateHolder.isVisible = true
+    }
+
+    fun closeScriptBar() {
+        mScriptBarCloseRunnable?.run()
+    }
+
+    val isScriptBarOpen: Boolean
+        get() = mScriptBarIsOpenCheck?.call() ?: false
+
+    @JvmName("isScriptBarOpen_compat")
+    fun isScriptBarOpen(): Boolean = isScriptBarOpen
+
     val isDrawerOpen: Boolean
         get() {
             return try {
@@ -937,6 +1029,225 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
 
     @JvmName("getCurrentSession_compat")
     fun getCurrentSession(): TerminalSession? = currentSession
+
+    /**
+     * The current working directory of the active terminal session's shell, as the shell itself
+     * sees it on Linux. In a proot-distro login this resolves to the rootfs path (not Android's
+     * "/"), so the file manager can browse the proot filesystem.
+     */
+    val currentSessionWorkingDirectory: String?
+        get() = currentSession?.cwd
+
+    /**
+     * The Linux-guest working directory of the active session: the path the shell reports (which a
+     * proot/chroot session translates) plus the real host path the file manager should operate on.
+     */
+    val currentSessionLinuxDirectory: TerminalSession.LinuxWorkingDirectory?
+        get() = currentSession?.linuxCwd
+
+    /** Directory where the right-side script bar stores user scripts (one file per script). */
+    val scriptsDir: java.io.File
+        get() = java.io.File(TermuxConstants.TERMUX_HOME_DIR_PATH, "scripts").apply {
+            if (!exists()) mkdirs()
+        }
+
+    /** The saved scripts, sorted by name. */
+    fun listScripts(): List<java.io.File> =
+        scriptsDir.listFiles { f -> f.isFile && f.extension == "sh" }?.sortedBy { it.name } ?: emptyList()
+
+    /**
+     * Save [content] as a script named [name] (auto-appends `.sh`). Returns the saved file, or
+     * `null` if the name is invalid/empty.
+     */
+    fun saveScript(name: String, content: String): java.io.File? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return null
+        var fileName = if (trimmed.endsWith(".sh")) trimmed else "$trimmed.sh"
+        fileName = fileName.replace("/", "_").replace("\\", "_")
+        val dir = scriptsDir
+        val file = java.io.File(dir, fileName)
+        file.writeText(content.trimStart().let { if (it.startsWith("#!")) it else "#!/data/data/com.termux/files/usr/bin/bash\n$it" })
+        return file
+    }
+
+    /** Delete a stored script file. */
+    fun deleteScript(file: java.io.File) {
+        if (file.canonicalPath.startsWith(scriptsDir.canonicalPath)) {
+            file.delete()
+        }
+    }
+
+    /** Run a stored script in the current terminal session (`bash <path>`). */
+    fun runScript(file: java.io.File) {
+        val session = currentSession ?: return
+        if (session.isRunning) {
+            session.write("bash " + shellQuote(file.absolutePath) + "\r")
+        }
+    }
+
+    /** Open a file for editing with nvim in the current terminal session. */
+    fun openFileInNvim(file: java.io.File) {
+        val session = currentSession ?: return
+        if (session.isRunning) {
+            session.write("nvim " + shellQuote(file.absolutePath) + "\r")
+        }
+    }
+
+    /**
+     * Create a new regular file named [name] in [dir]. Returns the created file, or `null` if the
+     * name is invalid or creation failed. Used by the file-manager's "New file" long-press action.
+     */
+    fun createFileInDir(dir: java.io.File, name: String): java.io.File? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed.contains('/') || trimmed.contains('\\')) return null
+        val target = java.io.File(dir, trimmed)
+        return if (target.createNewFile()) target else null
+    }
+
+    /** Create a new directory named [name] in [dir], mirroring `mkdir`. Returns it, or null. */
+    fun createDirInDir(dir: java.io.File, name: String): java.io.File? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed.contains('/') || trimmed.contains('\\')) return null
+        val target = java.io.File(dir, trimmed)
+        return if (target.mkdirs()) target else null
+    }
+
+    /** Delete a file or (recursively) a directory from the file manager. */
+    fun deleteFileNode(node: java.io.File): Boolean {
+        return if (node.isDirectory) node.deleteRecursively() else node.delete()
+    }
+
+    /**
+     * Toggle permission bits on a node with the POSIX-aware [java.io.File] API (`chmod`). The three
+     * booleans set/clear owner read, write and execute. Returns true on success.
+     */
+    fun setFilePermissions(node: java.io.File, read: Boolean, write: Boolean, execute: Boolean): Boolean {
+        if (node.isDirectory) {
+            val ok = node.setReadable(read, true)
+            val ok2 = node.setWritable(write, true)
+            val ok3 = node.setExecutable(execute, true)
+            return ok && ok2 && ok3
+        }
+        val ok = node.setReadable(read, true)
+        val ok2 = node.setWritable(write, true)
+        val ok3 = node.setExecutable(execute, true)
+        return ok && ok2 && ok3
+    }
+
+    /** File storing quick commands (one per line). */
+    val quickCommandsFile: java.io.File
+        get() = java.io.File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".termux/quick-commands")
+
+    /** The saved quick commands, one per line. */
+    fun listQuickCommands(): List<String> {
+        val file = quickCommandsFile
+        if (!file.exists()) return emptyList()
+        return try {
+            file.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Save a quick command (deduplicated). */
+    fun saveQuickCommand(command: String) {
+        val trimmed = command.trim()
+        if (trimmed.isEmpty()) return
+        val existing = listQuickCommands()
+        if (trimmed in existing) return
+        val file = quickCommandsFile
+        file.parentFile?.mkdirs()
+        file.writeText((existing + trimmed).joinToString("\n") + "\n")
+    }
+
+    /** Delete a quick command. */
+    fun deleteQuickCommand(command: String) {
+        val remaining = listQuickCommands().filterNot { it == command }
+        val file = quickCommandsFile
+        if (remaining.isEmpty()) {
+            file.delete()
+        } else {
+            file.writeText(remaining.joinToString("\n") + "\n")
+        }
+    }
+
+    /** Run a quick command in the current terminal session. */
+    fun runQuickCommand(command: String) {
+        val session = currentSession ?: return
+        // `exit` written into the shell leaves the session hanging on a "[Process completed]" screen
+        // (the login wrapper returns code 127, which is not auto-removed). Kill the session instead
+        // so it is cleaned up and the window closes.
+        if (command.trim() == "exit") {
+            session.finishIfRunning()
+            return
+        }
+        if (session.isRunning) {
+            session.write(command + "\r")
+        }
+    }
+
+    /** File storing letter-panel letters (one per line). */
+    val letterPanelFile: java.io.File
+        get() = java.io.File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".termux/letter-panel")
+
+    /** The configured letter-panel letters, one per line. */
+    fun listLetterPanelLetters(): List<String> {
+        val file = letterPanelFile
+        if (!file.exists()) return emptyList()
+        return try {
+            file.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Save a letter-panel letter (deduplicated). */
+    fun saveLetterPanelLetter(letter: String) {
+        val trimmed = letter.trim()
+        if (trimmed.isEmpty()) return
+        val existing = listLetterPanelLetters()
+        if (trimmed in existing) return
+        val file = letterPanelFile
+        file.parentFile?.mkdirs()
+        file.writeText((existing + trimmed).joinToString("\n") + "\n")
+    }
+
+    /** Delete a letter-panel letter. */
+    fun deleteLetterPanelLetter(letter: String) {
+        val remaining = listLetterPanelLetters().filterNot { it == letter }
+        val file = letterPanelFile
+        if (remaining.isEmpty()) {
+            file.delete()
+        } else {
+            file.writeText(remaining.joinToString("\n") + "\n")
+        }
+    }
+
+    /** Send raw input (e.g. a vim keystroke) to the current session. */
+    fun sendLetterInput(text: String) {
+        val session = currentSession ?: return
+        if (session.isRunning) {
+            session.write(text)
+        }
+    }
+
+    /**
+     * Save the current terminal output (the visible screen, or the full transcript when scrolled
+     * back) as a new script, then open the script bar. Returns the saved file or null.
+     */
+    fun saveTerminalOutputAsScript(): java.io.File? {
+        val terminalView = mTerminalView ?: return null
+        val emulator = terminalView.mEmulator ?: return null
+        val cols = emulator.mColumns
+        val rows = emulator.mRows
+        val text = emulator.screen.getSelectedText(0, 0, cols, rows).trim()
+        if (text.isEmpty()) return null
+        val name = "script_${System.currentTimeMillis()}"
+        return saveScript(name, text)
+    }
+
+    private fun shellQuote(path: String): String =
+        "'" + path.replace("'", "'\\''") + "'"
 
     private fun fixTermuxActivityBroadcastReceiverIntent(intent: Intent?) {
         if (intent == null) return
