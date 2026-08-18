@@ -32,9 +32,40 @@ jobs:
 
       - name: Install nforge logger
         run: |
-          mkdir -p ~/.gradle/init.d
-          cp scripts/wire-aot.gradle ~/.gradle/init.d/wire-aot.gradle
-          echo "Logger installed from scripts/wire-aot.gradle"
+          mkdir -p ~/.gradle/init.d /tmp/nforge-gradle-logs
+          cat > ~/.gradle/init.d/wire-aot.gradle << 'GRADLEOF'
+          import java.io.File
+          def logDir = "/tmp/nforge-gradle-logs"
+          new File(logDir).mkdirs()
+          def taskLog = new FileWriter(new File(logDir, "tasks.log"))
+          taskLog.write("=== nforge Gradle Logger ===\n")
+          taskLog.write("time: ${new Date()}\n\n")
+          gradle.projectsEvaluated { proj ->
+              proj.rootProject.allprojects.each { project ->
+                  project.tasks.configureEach { task ->
+                      def cls = task.class.name
+                      if (cls.contains("R8Task")) {
+                          taskLog.write("=== [R8] ${task.name} (${task.path}) ===\n")
+                          taskLog.write("  class: ${cls}\n")
+                          task.inputs.files.each { f -> taskLog.write("  input: ${f.absolutePath}\n") }
+                          try { taskLog.write("  outputDir: ${task.outputDirectory?.asFile?.get()?.absolutePath}\n") } catch (e) {}
+                          try { taskLog.write("  mapping: ${task.outputMappingFile?.asFile?.get()?.absolutePath}\n") } catch (e) {}
+                          taskLog.flush()
+                      }
+                      if (task.name.toLowerCase().contains("package") && task.name.toLowerCase().contains("release")) {
+                          taskLog.write("=== [PACKAGE] ${task.name} (${task.path}) ===\n")
+                          task.inputs.files.each { f -> taskLog.write("  input: ${f.absolutePath}\n") }
+                          try { taskLog.write("  outputDir: ${task.outputDirectory?.asFile?.get()}\n") } catch (e) {}
+                          taskLog.flush()
+                      }
+                  }
+              }
+              taskLog.write("\nDone scanning.\n")
+              taskLog.flush()
+              println "[nforge] Logger active -> ${logDir}/tasks.log"
+          }
+          GRADLEOF
+          echo "Logger installed"
 
       - name: Build release APK
         run: ./gradlew :app:assembleRelease --console=plain --no-daemon -x lintVitalAnalyzeRelease
