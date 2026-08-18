@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Release APK
 
 on:
   workflow_dispatch:
@@ -30,31 +30,37 @@ jobs:
       - name: Download bootstraps
         run: ./gradlew :app:downloadBootstraps --console=plain --no-daemon
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --console=plain --no-daemon
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --console=plain --no-daemon -x lintVitalAnalyzeRelease
+        env:
+          TERMUX_RELEASE_STORE_FILE: testkey_untrusted.jks
+          TERMUX_RELEASE_STORE_PASSWORD: android
+          TERMUX_RELEASE_KEY_ALIAS: alias
+          TERMUX_RELEASE_KEY_PASSWORD: android
+          JITPACK_NDK_VERSION: "29.0.14206865"
 
       - name: Verify APK
         run: |
-          APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
-          ls -lh "$APK"
+          ls -lh app/build/outputs/apk/release/app-release.apk
           python3 -c "
-          import zipfile, sys
-          z = zipfile.ZipFile('$APK')
+          import zipfile
+          z = zipfile.ZipFile('app/build/outputs/apk/release/app-release.apk')
           total = sum(i.file_size for i in z.infolist())
           print(f'APK: {total/1024/1024:.1f}MB, {len(z.namelist())} entries')
           print(f'Manifest: {any(\"AndroidManifest\" in n for n in z.namelist())}')
           print(f'resources.arsc: {any(\"resources.arsc\" in n for n in z.namelist())}')
-          print(f'dex: {sum(1 for n in z.namelist() if n.endswith(\".dex\"))}')
-          print(f'.so: {sum(1 for n in z.namelist() if n.endswith(\".so\"))}')
-          bootstrap = [n for n in z.namelist() if 'bootstrap' in n and n.endswith('.so')]
-          for b in bootstrap:
-              print(f'  {b}: {z.getinfo(b).file_size/1024/1024:.1f}MB')
+          dex_count = sum(1 for n in z.namelist() if n.endswith('.dex'))
+          so_count = sum(1 for n in z.namelist() if n.endswith('.so'))
+          print(f'dex: {dex_count}, .so: {so_count}')
+          for n in z.namelist():
+              if 'bootstrap' in n and n.endswith('.so'):
+                  print(f'  {n}: {z.getinfo(n).file_size/1024/1024:.1f}MB')
           z.close()
           "
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: termux-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: termux-release
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
