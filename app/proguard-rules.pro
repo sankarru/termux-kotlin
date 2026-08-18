@@ -10,3 +10,15 @@
 -dontobfuscate
 #-renamesourcefileattribute SourceFile
 #-keepattributes SourceFile,LineNumberTable
+
+# Keep JNI native methods — R8 strips them otherwise
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Keep classes that load native libraries
+-keep class com.termux.PtyProcess { *; }
+-keep class com.termux.terminal.JNI { *; }
+-keep class com.termux.VtParser { *; }
+-keep class com.termux.app.TermuxInstaller { *; }
+-keep class com.termux.shared.net.socket.local.LocalSocketManager { *; }
