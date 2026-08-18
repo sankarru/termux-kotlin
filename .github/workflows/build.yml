@@ -21,7 +21,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK
+      - name: Install NDK 29
         run: sdkmanager "ndk;29.0.14206865"
 
       - name: Setup Gradle
@@ -33,30 +33,33 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
 
+      - name: Download bootstraps
+        run: ./gradlew :app:downloadBootstraps --console=plain --no-daemon
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+
       - name: Build release APK
-        run: ./gradlew clean :app:assembleRelease --console=plain --no-daemon
+        run: ./gradlew :app:assembleRelease --console=plain --no-daemon -x lintVitalAnalyzeRelease
         env:
           TERMUX_RELEASE_STORE_FILE: release.jks
           TERMUX_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           TERMUX_RELEASE_KEY_ALIAS: release
           TERMUX_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           JAVA_HOME: ${{ env.JAVA_HOME }}
+          JITPACK_NDK_VERSION: "29.0.14206865"
 
       - name: Verify APK
         run: |
           ls -lh app/build/outputs/apk/release/app-release.apk
-          unzip -l app/build/outputs/apk/release/app-release.apk | grep -E "AndroidManifest|resources\.arsc|\.dex|\.so" | head -20
-          echo "---"
           python3 -c "
           import zipfile
           z = zipfile.ZipFile('app/build/outputs/apk/release/app-release.apk')
           total = sum(i.file_size for i in z.infolist())
           print(f'APK: {total/1024/1024:.1f}MB, {len(z.namelist())} entries')
-          has_manifest = any('AndroidManifest' in n for n in z.namelist())
-          has_arsc = any('resources.arsc' in n for n in z.namelist())
-          dex_count = sum(1 for n in z.namelist() if n.endswith('.dex'))
-          so_count = sum(1 for n in z.namelist() if n.endswith('.so'))
-          print(f'Manifest: {has_manifest}, resources.arsc: {has_arsc}, dex: {dex_count}, .so: {so_count}')
+          print(f'Manifest: {any(\"AndroidManifest\" in n for n in z.namelist())}')
+          print(f'resources.arsc: {any(\"resources.arsc\" in n for n in z.namelist())}')
+          print(f'dex: {sum(1 for n in z.namelist() if n.endswith(\".dex\"))}')
+          print(f'.so: {sum(1 for n in z.namelist() if n.endswith(\".so\"))}')
           z.close()
           "
 
