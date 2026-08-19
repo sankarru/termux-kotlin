@@ -97,7 +97,11 @@ fun TermuxMainScreen(
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 drawerTonalElevation = 0.dp,
-                modifier = Modifier.width(300.dp).imePadding()
+                modifier = Modifier
+                    .width(300.dp)
+                    .imePadding()
+                    // Keep the drawer clear of the status bar / display cutout in fullscreen.
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
             ) {
                 TermuxDrawerContent(
                     activity = activity,
@@ -137,7 +141,10 @@ fun TermuxMainScreen(
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onBackground,
             contentWindowInsets = if (activity.properties.isUsingFullScreen()) {
-                WindowInsets(0, 0, 0, 0)
+                // Fullscreen: draw edge-to-edge on sides/bottom, but keep the top
+                // status-bar + display-cutout (notch) inset so the Compose main screen
+                // (drawer, toolbar, session list) is never rendered underneath it.
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
             } else {
                 ScaffoldDefaults.contentWindowInsets
             }
